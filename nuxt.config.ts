@@ -5,8 +5,11 @@ export default defineNuxtConfig({
   // Load CSS Tailwind
   css: ['~/assets/css/main.css'],
 
-  // Load Modul Supabase
-  modules: ['@nuxtjs/supabase'],
+  // Load Modul Supabase dan Tailwind
+  modules: [
+    '@nuxtjs/supabase',
+    '@nuxtjs/tailwindcss'
+  ],
 
   // Konfigurasi Supabase
   supabase: {
@@ -16,12 +19,5 @@ export default defineNuxtConfig({
   // Kunci API untuk Kong AI (nilai aslinya diisi lewat .env)
   runtimeConfig: {
     anthropicApiKey: ''
-  },
-
-  postcss: {
-    plugins: {
-      '@tailwindcss/postcss': {},
-      autoprefixer: {},
-    },
-  },
+  }
 })
