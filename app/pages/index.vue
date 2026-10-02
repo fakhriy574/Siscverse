@@ -38,7 +38,7 @@ const { data: home, pending } = useAsyncData(
       menfess: f.error ? null : (f.data?.[0] ?? false)
     }
   },
-  { lazy: true, default: () => ({ members: null, schedules: null, kas: null, menfess: null }) }
+  { server: false, lazy: true, default: () => ({ members: null, schedules: null, kas: null, menfess: null }) }
 )
 
 /* ===== HELPER ===== */

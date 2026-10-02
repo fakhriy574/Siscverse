@@ -24,7 +24,7 @@ const { data: rows, pending, error } = useAsyncData(
     if (error) throw error
     return data ?? []
   },
-  { lazy: true, default: () => [] }
+  { server: false, lazy: true, default: () => [] }
 )
 
 // Error fetch tampil di console browser (F12) supaya tidak tertelan diam-diam

@@ -27,7 +27,7 @@ const { data: schedules, refresh, error: loadError } = await useAsyncData('sched
     .order(COLS.time, { ascending: true })
   if (error) throw error
   return data || []
-})
+}, { server: false })
 
 const search = ref('')
 const filtered = computed(() => {
@@ -155,15 +155,13 @@ const remove = async () => {
   notify(`Jadwal ${target[COLS.subject] || ''} dihapus.`)
 }
 
-// ---------- IMPORT DARI GOOGLE SHEETS (LINK / CSV) ----------
+// ---------- IMPORT DARI GOOGLE SHEETS (CSV) ----------
 const showImport = ref(false)
 const importRows = ref([])
 const importFileName = ref('')
 const importError = ref('')
 const importing = ref(false)
 const importInput = ref(null)
-const sheetUrl = ref('')
-const loadingSheet = ref(false)
 
 // Penguraian CSV yang aman untuk teks dalam tanda kutip dan baris baru di dalam sel
 const parseCSV = (text) => {
@@ -240,7 +238,7 @@ const buildImportRows = (table) => {
   if (idx.time === -1) missing.push('Jam')
   if (idx.subject === -1) missing.push('Mata Pelajaran')
   if (missing.length) {
-    throw new Error(`Kolom ${missing.join(', ')} tidak ditemukan. Baris pertama harus berisi header: Hari, Jam, Mata Pelajaran, Ruangan.`)
+    throw new Error(`Kolom ${missing.join(', ')} tidak ditemukan. Baris pertama CSV harus berisi header: Hari, Jam, Mata Pelajaran, Ruangan.`)
   }
   const cell = (cells, i) => (i === -1 ? '' : cells[i] ?? '')
 
@@ -282,67 +280,27 @@ const openImport = () => {
   importRows.value = []
   importFileName.value = ''
   importError.value = ''
-  sheetUrl.value = ''
   if (importInput.value) importInput.value.value = ''
   showImport.value = true
 }
 
 const closeImport = () => {
-  if (importing.value || loadingSheet.value) return
+  if (importing.value) return
   showImport.value = false
-}
-
-// Proses teks CSV, dipakai oleh unggah file maupun link Google Sheets
-const processCSV = (text, sourceName) => {
-  importError.value = ''
-  importRows.value = []
-  importFileName.value = sourceName
-  try {
-    const table = parseCSV(text)
-    if (table.length < 2) throw new Error('Sheet kosong atau tidak ada baris data.')
-    importRows.value = buildImportRows(table)
-  } catch (err) {
-    importError.value = err.message
-  }
 }
 
 const onPickImport = async (e) => {
   const file = e.target.files?.[0]
   if (!file) return
-  processCSV(await file.text(), file.name)
-}
-
-// Ambil ID spreadsheet dan gid (tab) dari link Google Sheets
-const parseSheetUrl = (url) => {
-  const id = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)?.[1]
-  const gid = url.match(/[#&?]gid=(\d+)/)?.[1] || '0'
-  return id ? { id, gid } : null
-}
-
-// Ambil CSV langsung dari browser lewat endpoint gviz (sheet harus publik: "Siapa saja yang memiliki link")
-const fetchFromSheet = async () => {
   importError.value = ''
-  const parsed = parseSheetUrl(sheetUrl.value.trim())
-  if (!parsed) {
-    importError.value = 'Link tidak valid. Tempel link Google Sheets, contoh: https://docs.google.com/spreadsheets/d/.../edit'
-    return
-  }
-
-  loadingSheet.value = true
+  importRows.value = []
+  importFileName.value = file.name
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${parsed.id}/gviz/tq?tqx=out:csv&gid=${parsed.gid}`
-    const res = await fetch(url)
-    const text = await res.text()
-
-    // Sheet privat mengembalikan halaman login (HTML), bukan CSV
-    if (!res.ok || text.trimStart().startsWith('<')) throw new Error('private')
-
-    processCSV(text, `Google Sheets (tab gid ${parsed.gid})`)
-  } catch {
-    importRows.value = []
-    importError.value = 'Sheet tidak bisa diakses. Pastikan dibagikan sebagai "Siapa saja yang memiliki link" (Pelihat), atau unggah file CSV di bawah.'
-  } finally {
-    loadingSheet.value = false
+    const table = parseCSV(await file.text())
+    if (table.length < 2) throw new Error('File kosong atau tidak ada baris data.')
+    importRows.value = buildImportRows(table)
+  } catch (err) {
+    importError.value = err.message
   }
 }
 
@@ -588,7 +546,7 @@ onBeforeUnmount(() => clearTimeout(toastTimer))
       </div>
     </div>
 
-    <!-- Import modal (link Google Sheets / CSV) -->
+    <!-- Import modal (Google Sheets -> CSV) -->
     <div
       v-if="showImport"
       class="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
@@ -605,33 +563,7 @@ onBeforeUnmount(() => clearTimeout(toastTimer))
             <p class="font-bold text-slate-700">Format Google Sheets</p>
             <p>Baris pertama adalah header, satu jadwal per baris, dengan kolom <strong>Hari</strong>, <strong>Jam</strong>, <strong>Mata Pelajaran</strong>, dan <strong>Ruangan</strong> (ruangan boleh kosong). Urutan kolom bebas.</p>
             <p>Hari boleh <em>Senin</em> atau <em>Monday</em>. Jam boleh <em>08:00</em>, <em>08.00</em>, atau <em>08.00 - 09.40</em> (yang diambil jam mulainya).</p>
-            <p>Pastikan sheet dibagikan sebagai <strong>Siapa saja yang memiliki link → Pelihat</strong>. Untuk memilih tab tertentu, buka tab itu lalu salin link dari address bar.</p>
-          </div>
-
-          <div>
-            <label for="sheet-url" class="block text-xs font-bold text-slate-500 mb-2">Link Google Sheets</label>
-            <div class="flex flex-col sm:flex-row gap-3">
-              <input
-                id="sheet-url"
-                v-model="sheetUrl"
-                type="url"
-                placeholder="https://docs.google.com/spreadsheets/d/..."
-                class="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
-                @keyup.enter="fetchFromSheet"
-              />
-              <button
-                type="button"
-                class="text-sm font-bold px-5 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-60 transition-colors shrink-0"
-                :disabled="loadingSheet || !sheetUrl.trim()"
-                @click="fetchFromSheet"
-              >
-                {{ loadingSheet ? 'Mengambil...' : 'Ambil data' }}
-              </button>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-3 text-xs font-bold text-slate-300">
-            <span class="flex-1 border-t border-slate-200"></span>atau unggah CSV<span class="flex-1 border-t border-slate-200"></span>
+            <p>Lalu unduh lewat <strong>File → Unduh → Nilai dipisahkan koma (.csv)</strong> dan unggah di sini.</p>
           </div>
 
           <div class="flex flex-wrap items-center gap-3">
@@ -641,7 +573,7 @@ onBeforeUnmount(() => clearTimeout(toastTimer))
               class="text-sm font-bold px-5 py-2.5 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-700 transition-colors"
               @click="importInput?.click()"
             >
-              Pilih file CSV
+              {{ importFileName ? 'Ganti file CSV' : 'Pilih file CSV' }}
             </button>
             <span v-if="importFileName" class="text-xs font-medium text-slate-400 truncate">{{ importFileName }}</span>
           </div>

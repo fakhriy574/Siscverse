@@ -9,7 +9,15 @@ const COLS = {
   instagram: 'instagram',
   quote: 'quote',
   photo: 'photo_url',
+  role: 'role',
 }
+
+// Pilihan jabatan. Kata kunci di sini yang dipakai halaman publik untuk menaruh orang di rasi bintang.
+const ROLE_OPTIONS = [
+  'Ketua', 'Wakil Ketua', 'Sekretaris', 'Bendahara', 'Bendahara II',
+  'PJ Konsep Sistem Informasi', 'PJ Bahasa Inggris', 'PJ Algoritma', 'PJ Pancasila',
+  'PJ Pemrograman', 'PJ Matematika Dasar', 'PJ Agama Islam', 'PJ Bahasa Indonesia',
+]
 const BUCKET = 'member-photos'
 const MAX_FILE_MB = 5
 
@@ -21,7 +29,7 @@ const { data: members, refresh, error: loadError } = await useAsyncData('members
     .order(COLS.name, { ascending: true })
   if (error) throw error
   return data || []
-})
+}, { server: false })
 
 const search = ref('')
 const filtered = computed(() => {
@@ -34,7 +42,11 @@ const filtered = computed(() => {
 })
 
 // ---------- STATE ----------
-const emptyForm = () => ({ name: '', birth: '', instagram: '', quote: '' })
+const emptyForm = () => ({ name: '', role: '', birth: '', instagram: '', quote: '' })
+
+const roleOptions = computed(() =>
+  form.value.role && !ROLE_OPTIONS.includes(form.value.role) ? [form.value.role, ...ROLE_OPTIONS] : ROLE_OPTIONS
+)
 
 const showForm = ref(false)
 const editingId = ref(null)
@@ -52,7 +64,7 @@ const fileInput = ref(null)
 const shownPhoto = computed(() => {
   if (previewUrl.value) return previewUrl.value
   if (removePhoto.value) return ''
-  return photoSrc(currentPhotoUrl.value)
+  return currentPhotoUrl.value
 })
 
 const deleteTarget = ref(null)
@@ -64,27 +76,6 @@ const notify = (msg) => {
   toast.value = msg
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => (toast.value = ''), 2800)
-}
-
-// ---------- TAMPILAN FOTO ----------
-// Format URL Google Drive yang lebih stabil untuk hotlink.
-const driveImageUrl = (id) => `https://lh3.googleusercontent.com/d/${id}=w800`
-
-// Link Drive lama (drive.google.com/thumbnail?id=...) yang sudah tersimpan di database
-// diubah otomatis saat ditampilkan, jadi tidak perlu update database atau impor ulang.
-const photoSrc = (url) => {
-  if (!url) return ''
-  if (url.includes('drive.google.com')) {
-    const id = url.match(/[?&]id=([\w-]+)/)?.[1] || url.match(/\/d\/([\w-]+)/)?.[1]
-    if (id) return driveImageUrl(id)
-  }
-  return url
-}
-
-// Foto yang gagal dimuat: tampilkan inisial, bukan ikon gambar rusak
-const brokenPhotos = ref(new Set())
-const onImgError = (id) => {
-  brokenPhotos.value = new Set(brokenPhotos.value).add(id)
 }
 
 // ---------- FOTO ----------
@@ -158,7 +149,6 @@ const uploadPhoto = async (file) => {
 }
 
 // Ambil path file dari public URL, lalu hapus dari bucket
-// (URL Google Drive dilewati karena tidak mengandung nama bucket)
 const deletePhotoFile = async (url) => {
   if (!url) return
   const marker = `/${BUCKET}/`
@@ -182,6 +172,7 @@ const openEdit = (m) => {
   editingId.value = m.id
   form.value = {
     name: m[COLS.name] || '',
+    role: ROLE_OPTIONS.includes(m[COLS.role]) ? m[COLS.role] : (m[COLS.role] && m[COLS.role].toLowerCase() !== 'member' ? m[COLS.role] : ''),
     birth: m[COLS.birth] || '',
     instagram: m[COLS.instagram] || '',
     quote: m[COLS.quote] || '',
@@ -212,6 +203,7 @@ const save = async () => {
   try {
     const payload = {
       [COLS.name]: name,
+      [COLS.role]: form.value.role || 'member',
       [COLS.birth]: form.value.birth || null,
       [COLS.instagram]: form.value.instagram.trim().replace(/^@+/, '') || null,
       [COLS.quote]: form.value.quote.trim() || null,
@@ -234,13 +226,6 @@ const save = async () => {
     // Data tersimpan, sekarang aman menghapus foto lama
     if ((newPhotoFile.value || removePhoto.value) && currentPhotoUrl.value) {
       await deletePhotoFile(currentPhotoUrl.value)
-    }
-
-    // Foto baru menggantikan yang rusak: reset status rusak untuk warga ini
-    if (editingId.value && brokenPhotos.value.has(editingId.value)) {
-      const next = new Set(brokenPhotos.value)
-      next.delete(editingId.value)
-      brokenPhotos.value = next
     }
 
     const wasEdit = !!editingId.value
@@ -280,7 +265,7 @@ const remove = async () => {
   notify(`${target[COLS.name] || 'Warga'} dihapus.`)
 }
 
-// ---------- IMPORT DARI GOOGLE SHEETS (LINK / CSV) ----------
+// ---------- IMPORT DARI GOOGLE SHEETS (CSV) ----------
 const showImport = ref(false)
 const importRows = ref([])
 const importFileName = ref('')
@@ -290,8 +275,6 @@ const importPhotos = ref(true) // ikut simpan link foto dari Google Drive
 const tidyNames = ref(true) // rapikan huruf besar-kecil nama
 const fileDupes = ref(0) // jumlah baris ganda di dalam file
 const importInput = ref(null)
-const sheetUrl = ref('')
-const loadingSheet = ref(false)
 
 // Penguraian CSV yang aman untuk teks dalam tanda kutip dan baris baru di dalam sel
 const parseCSV = (text) => {
@@ -366,7 +349,7 @@ const drivePhoto = (v) => {
   const s = cleanText(v)
   if (!s) return null
   const m = s.match(/[?&]id=([\w-]+)/) || s.match(/\/d\/([\w-]+)/)
-  return m ? driveImageUrl(m[1]) : null
+  return m ? `https://drive.google.com/thumbnail?id=${m[1]}&sz=w800` : null
 }
 
 const buildImportRows = (table) => {
@@ -380,7 +363,7 @@ const buildImportRows = (table) => {
     photo: find((h) => h.includes('foto')),
   }
   if (idx.name === -1) {
-    throw new Error('Kolom "Nama lengkap" tidak ditemukan. Pastikan baris pertama adalah header dari Google Sheets.')
+    throw new Error('Kolom "Nama lengkap" tidak ditemukan. Pastikan baris pertama CSV adalah header dari Google Sheets.')
   }
   const cell = (cells, i) => (i === -1 ? '' : cells[i] ?? '')
 
@@ -427,67 +410,27 @@ const openImport = () => {
   importFileName.value = ''
   importError.value = ''
   fileDupes.value = 0
-  sheetUrl.value = ''
   if (importInput.value) importInput.value.value = ''
   showImport.value = true
 }
 
 const closeImport = () => {
-  if (importing.value || loadingSheet.value) return
+  if (importing.value) return
   showImport.value = false
-}
-
-// Proses teks CSV, dipakai oleh unggah file maupun link Google Sheets
-const processCSV = (text, sourceName) => {
-  importError.value = ''
-  importRows.value = []
-  importFileName.value = sourceName
-  try {
-    const table = parseCSV(text)
-    if (table.length < 2) throw new Error('Sheet kosong atau tidak ada baris data.')
-    importRows.value = buildImportRows(table)
-  } catch (err) {
-    importError.value = err.message
-  }
 }
 
 const onPickImport = async (e) => {
   const file = e.target.files?.[0]
   if (!file) return
-  processCSV(await file.text(), file.name)
-}
-
-// Ambil ID spreadsheet dan gid (tab) dari link Google Sheets
-const parseSheetUrl = (url) => {
-  const id = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)?.[1]
-  const gid = url.match(/[#&?]gid=(\d+)/)?.[1] || '0'
-  return id ? { id, gid } : null
-}
-
-// Ambil CSV langsung dari browser lewat endpoint gviz (sheet harus publik: "Siapa saja yang memiliki link")
-const fetchFromSheet = async () => {
   importError.value = ''
-  const parsed = parseSheetUrl(sheetUrl.value.trim())
-  if (!parsed) {
-    importError.value = 'Link tidak valid. Tempel link Google Sheets, contoh: https://docs.google.com/spreadsheets/d/.../edit'
-    return
-  }
-
-  loadingSheet.value = true
+  importRows.value = []
+  importFileName.value = file.name
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${parsed.id}/gviz/tq?tqx=out:csv&gid=${parsed.gid}`
-    const res = await fetch(url)
-    const text = await res.text()
-
-    // Sheet privat mengembalikan halaman login (HTML), bukan CSV
-    if (!res.ok || text.trimStart().startsWith('<')) throw new Error('private')
-
-    processCSV(text, `Google Sheets (tab gid ${parsed.gid})`)
-  } catch {
-    importRows.value = []
-    importError.value = 'Sheet tidak bisa diakses. Pastikan dibagikan sebagai "Siapa saja yang memiliki link" (Pelihat), atau unggah file CSV di bawah.'
-  } finally {
-    loadingSheet.value = false
+    const table = parseCSV(await file.text())
+    if (table.length < 2) throw new Error('File kosong atau tidak ada baris data.')
+    importRows.value = buildImportRows(table)
+  } catch (err) {
+    importError.value = err.message
   }
 }
 
@@ -622,13 +565,11 @@ onBeforeUnmount(() => {
           >
             <div class="flex items-center gap-3">
               <img
-                v-if="m[COLS.photo] && !brokenPhotos.has(m.id)"
-                :src="photoSrc(m[COLS.photo])"
+                v-if="m[COLS.photo]"
+                :src="m[COLS.photo]"
                 :alt="`Foto ${m[COLS.name] || 'warga'}`"
-                referrerpolicy="no-referrer"
                 loading="lazy"
                 class="w-14 h-14 rounded-2xl object-cover shrink-0 bg-slate-100"
-                @error="onImgError(m.id)"
               />
               <div
                 v-else
@@ -640,6 +581,12 @@ onBeforeUnmount(() => {
                 <h3 class="font-black text-slate-900 truncate">{{ m[COLS.name] || 'Tanpa nama' }}</h3>
                 <p class="text-xs font-medium text-slate-400 truncate">
                   {{ m[COLS.instagram] ? '@' + m[COLS.instagram] : 'Instagram belum diisi' }}
+                </p>
+                <p
+                  v-if="m[COLS.role] && m[COLS.role].toLowerCase() !== 'member'"
+                  class="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-violet-50 text-violet-700"
+                >
+                  {{ m[COLS.role] }}
                 </p>
               </div>
             </div>
@@ -697,7 +644,6 @@ onBeforeUnmount(() => {
                 v-if="shownPhoto"
                 :src="shownPhoto"
                 alt="Pratinjau foto"
-                referrerpolicy="no-referrer"
                 class="w-20 h-20 rounded-2xl object-cover bg-slate-100 shrink-0"
               />
               <div
@@ -743,6 +689,18 @@ onBeforeUnmount(() => {
               type="text"
               class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
             />
+          </div>
+
+          <div>
+            <label for="f-role" class="block text-xs font-bold text-slate-500 mb-2">Jabatan</label>
+            <select
+              id="f-role"
+              v-model="form.role"
+              class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+            >
+              <option value="">Anggota (tanpa jabatan)</option>
+              <option v-for="r in roleOptions" :key="r" :value="r">{{ r }}</option>
+            </select>
           </div>
 
           <div>
@@ -804,7 +762,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Import modal (link Google Sheets / CSV) -->
+    <!-- Import modal (Google Sheets -> CSV) -->
     <div
       v-if="showImport"
       class="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
@@ -817,36 +775,9 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="px-8 py-6 space-y-5 overflow-y-auto">
-          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-600 leading-relaxed space-y-2">
-            <p class="font-bold text-slate-700">Cara mengimpor</p>
-            <p>Buka Google Sheets berisi jawaban formulir, pastikan dibagikan sebagai <strong>Siapa saja yang memiliki link → Pelihat</strong>, lalu tempel link-nya di bawah. Untuk memilih tab tertentu, buka tab itu lalu salin link dari address bar.</p>
-            <p>Kalau sheet-nya privat, unduh lewat <strong>File → Unduh → Nilai dipisahkan koma (.csv)</strong> dan unggah file-nya. Kolom Timestamp dan Email tidak ikut diimpor.</p>
-          </div>
-
-          <div>
-            <label for="sheet-url" class="block text-xs font-bold text-slate-500 mb-2">Link Google Sheets</label>
-            <div class="flex flex-col sm:flex-row gap-3">
-              <input
-                id="sheet-url"
-                v-model="sheetUrl"
-                type="url"
-                placeholder="https://docs.google.com/spreadsheets/d/..."
-                class="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
-                @keyup.enter="fetchFromSheet"
-              />
-              <button
-                type="button"
-                class="text-sm font-bold px-5 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-60 transition-colors shrink-0"
-                :disabled="loadingSheet || !sheetUrl.trim()"
-                @click="fetchFromSheet"
-              >
-                {{ loadingSheet ? 'Mengambil...' : 'Ambil data' }}
-              </button>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-3 text-xs font-bold text-slate-300">
-            <span class="flex-1 border-t border-slate-200"></span>atau unggah CSV<span class="flex-1 border-t border-slate-200"></span>
+          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-600 leading-relaxed">
+            <p class="font-bold text-slate-700 mb-1">Cara mengunduh CSV</p>
+            <p>Buka Google Sheets berisi jawaban formulir, lalu pilih <strong>File → Unduh → Nilai dipisahkan koma (.csv)</strong>. Unggah file itu di sini. Kolom Timestamp dan Email tidak ikut diimpor.</p>
           </div>
 
           <div class="flex flex-wrap items-center gap-3">
@@ -856,7 +787,7 @@ onBeforeUnmount(() => {
               class="text-sm font-bold px-5 py-2.5 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-700 transition-colors"
               @click="importInput?.click()"
             >
-              Pilih file CSV
+              {{ importFileName ? 'Ganti file CSV' : 'Pilih file CSV' }}
             </button>
             <span v-if="importFileName" class="text-xs font-medium text-slate-400 truncate">{{ importFileName }}</span>
           </div>

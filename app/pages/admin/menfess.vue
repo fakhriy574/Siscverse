@@ -20,7 +20,7 @@ const { data: messages, refresh, error: loadError } = await useAsyncData('menfes
     .order(COLS.createdAt, { ascending: false })
   if (error) throw error
   return data || []
-})
+}, { server: false })
 
 const search = ref('')
 const filtered = computed(() => {
