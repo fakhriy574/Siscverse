@@ -275,6 +275,8 @@ const importPhotos = ref(true) // ikut simpan link foto dari Google Drive
 const tidyNames = ref(true) // rapikan huruf besar-kecil nama
 const fileDupes = ref(0) // jumlah baris ganda di dalam file
 const importInput = ref(null)
+const sheetUrl = ref('')
+const loadingSheet = ref(false)
 
 // Penguraian CSV yang aman untuk teks dalam tanda kutip dan baris baru di dalam sel
 const parseCSV = (text) => {
@@ -410,6 +412,7 @@ const openImport = () => {
   importFileName.value = ''
   importError.value = ''
   fileDupes.value = 0
+  sheetUrl.value = ''
   if (importInput.value) importInput.value.value = ''
   showImport.value = true
 }
@@ -419,19 +422,85 @@ const closeImport = () => {
   showImport.value = false
 }
 
-const onPickImport = async (e) => {
-  const file = e.target.files?.[0]
-  if (!file) return
+// Ubah link Google Sheets menjadi alamat unduhan CSV. Gid (tab) dipakai kalau ada di link.
+const sheetCsvUrls = (input) => {
+  const text = String(input || '').trim()
+  const gid = (text.match(/[#&?]gid=(\d+)/) || [])[1]
+
+  // Sheet yang sudah "Publikasikan ke web"
+  const pub = text.match(/\/spreadsheets\/d\/e\/([\w-]+)/)
+  if (pub) return [`https://docs.google.com/spreadsheets/d/e/${pub[1]}/pub?output=csv${gid ? `&gid=${gid}` : ''}`]
+
+  const m = text.match(/\/spreadsheets\/d\/([\w-]+)/) || (/^[\w-]{25,}$/.test(text) ? [null, text] : null)
+  if (!m) return []
+  const id = m[1]
+  const g = gid ? `&gid=${gid}` : ''
+  return [
+    `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&headers=1${g}`,
+    `https://docs.google.com/spreadsheets/d/${id}/export?format=csv${g}`,
+  ]
+}
+
+const fetchSheetCsv = async (input) => {
+  const urls = sheetCsvUrls(input)
+  if (!urls.length) {
+    throw new Error('Link tidak dikenali. Tempel link yang berbentuk docs.google.com/spreadsheets/d/...')
+  }
+  let sawLoginPage = false
+  for (const url of urls) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) continue
+      const text = await res.text()
+      if (/^\s*<(!doctype|html)/i.test(text)) { sawLoginPage = true; continue }
+      return text
+    } catch {
+      // diblokir browser atau jaringan, coba alamat berikutnya
+    }
+  }
+  throw new Error(
+    sawLoginPage
+      ? 'Sheet ini masih pribadi. Di Google Sheets pilih Bagikan, lalu ubah Akses umum menjadi "Siapa saja yang memiliki link" (Viewer), kemudian coba lagi.'
+      : 'Sheet tidak bisa dibaca dari browser. Pastikan aksesnya "Siapa saja yang memiliki link", atau unduh sebagai CSV lalu unggah filenya di bawah.'
+  )
+}
+
+// Pemrosesan bersama untuk file CSV maupun hasil dari link
+const processCsv = (text, label) => {
   importError.value = ''
   importRows.value = []
-  importFileName.value = file.name
+  importFileName.value = label
   try {
-    const table = parseCSV(await file.text())
-    if (table.length < 2) throw new Error('File kosong atau tidak ada baris data.')
+    const table = parseCSV(text)
+    if (table.length < 2) throw new Error('Sheet kosong atau tidak ada baris data.')
     importRows.value = buildImportRows(table)
   } catch (err) {
     importError.value = err.message
   }
+}
+
+const loadFromLink = async () => {
+  importError.value = ''
+  if (!sheetUrl.value.trim()) {
+    importError.value = 'Tempel link Google Sheets dulu.'
+    return
+  }
+  loadingSheet.value = true
+  try {
+    processCsv(await fetchSheetCsv(sheetUrl.value), 'Google Sheets')
+  } catch (err) {
+    importRows.value = []
+    importFileName.value = ''
+    importError.value = err.message
+  } finally {
+    loadingSheet.value = false
+  }
+}
+
+const onPickImport = async (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
+  processCsv(await file.text(), file.name)
 }
 
 const runImport = async () => {
@@ -775,11 +844,37 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="px-8 py-6 space-y-5 overflow-y-auto">
-          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-600 leading-relaxed">
-            <p class="font-bold text-slate-700 mb-1">Cara mengunduh CSV</p>
-            <p>Buka Google Sheets berisi jawaban formulir, lalu pilih <strong>File → Unduh → Nilai dipisahkan koma (.csv)</strong>. Unggah file itu di sini. Kolom Timestamp dan Email tidak ikut diimpor.</p>
+          <!-- Opsi 1: tempel link -->
+          <div class="space-y-2">
+            <label for="i-link" class="block text-xs font-bold text-slate-500">Tempel link Google Sheets</label>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input
+                id="i-link"
+                v-model="sheetUrl"
+                type="url"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                class="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                @keyup.enter="loadFromLink"
+              />
+              <button
+                type="button"
+                class="text-sm font-bold px-5 py-3 rounded-2xl bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-60 transition-colors shrink-0"
+                :disabled="loadingSheet"
+                @click="loadFromLink"
+              >
+                {{ loadingSheet ? 'Mengambil...' : 'Ambil dari link' }}
+              </button>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Di Google Sheets pilih <strong>Bagikan</strong>, ubah Akses umum menjadi <strong>Siapa saja yang memiliki link</strong> (Viewer). Sheet jawaban formulir berisi kolom email, jadi kembalikan ke "Dibatasi" setelah selesai impor. Kolom Timestamp dan Email tidak ikut diimpor.
+            </p>
           </div>
 
+          <div class="flex items-center gap-3 text-xs text-slate-300">
+            <span class="h-px flex-1 bg-slate-200"></span>atau<span class="h-px flex-1 bg-slate-200"></span>
+          </div>
+
+          <!-- Opsi 2: unggah file CSV -->
           <div class="flex flex-wrap items-center gap-3">
             <input ref="importInput" type="file" accept=".csv,text/csv" class="hidden" @change="onPickImport" />
             <button
@@ -787,10 +882,11 @@ onBeforeUnmount(() => {
               class="text-sm font-bold px-5 py-2.5 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-700 transition-colors"
               @click="importInput?.click()"
             >
-              {{ importFileName ? 'Ganti file CSV' : 'Pilih file CSV' }}
+              Unggah file CSV
             </button>
-            <span v-if="importFileName" class="text-xs font-medium text-slate-400 truncate">{{ importFileName }}</span>
+            <span v-if="importFileName" class="text-xs font-medium text-slate-400 truncate">Sumber: {{ importFileName }}</span>
           </div>
+          <p class="text-xs text-slate-400 -mt-2">Unduh lewat File, Unduh, Nilai dipisahkan koma (.csv), kalau kamu tidak mau membagikan sheet-nya.</p>
 
           <div class="flex flex-wrap gap-x-6 gap-y-2">
             <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">

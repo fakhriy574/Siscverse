@@ -131,8 +131,7 @@ const timeAgo = (value) => {
     </div>
 
     <div class="noise-overlay"></div>
-    <SpaceSky />
-    <AppNavbar />
+  
 
     <main class="main-layout">
 

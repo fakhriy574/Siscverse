@@ -134,9 +134,6 @@ const grouped = computed(() => {
     </div>
 
     <div class="noise-overlay"></div>
-    <SpaceSky />
-    <AppNavbar />
-
     <main class="main-layout">
 
       <!-- HEADER -->

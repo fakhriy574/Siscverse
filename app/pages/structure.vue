@@ -234,8 +234,7 @@ function closeModal() { activeModalMember.value = null }
     </div>
 
     <div class="noise-overlay"></div>
-    <SpaceSky />
-    <AppNavbar />
+
 
     <main class="main-layout">
 
