@@ -236,7 +236,12 @@ onBeforeUnmount(() => {
 <template>
   <div class="page" :class="{ js: ready }">
     <div class="progress" aria-hidden="true" :style="{ transform: `scaleX(${progress})` }"></div>
-    
+    <SpaceSky />
+    <AppNavbar />
+    <MusicPlayer />
+    <BirthdayPopup />
+    <InstallApp />
+
     <main class="content">
       <!-- HERO -->
       <section id="hero" class="hero wrap">

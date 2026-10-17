@@ -337,32 +337,7 @@ onBeforeUnmount(() => clearTimeout(toastTimer))
 <template>
   <div class="flex h-screen bg-[#F8FAFC] text-slate-800 font-sans overflow-hidden selection:bg-violet-200">
     <!-- Sidebar -->
-    <aside class="w-64 bg-white border-r border-slate-100 flex-col justify-between hidden md:flex shrink-0 shadow-sm z-10">
-      <div>
-        <div class="h-20 flex items-center px-8">
-          <div class="w-8 h-8 bg-gradient-to-tr from-violet-600 to-pink-500 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md mr-3">S</div>
-          <span class="font-black text-slate-800 tracking-tight text-xl">Siscverse</span>
-        </div>
-
-        <nav class="p-4 space-y-1">
-          <NuxtLink class="flex items-center px-4 py-3 text-sm font-medium rounded-2xl text-slate-500 hover:bg-slate-50 transition-all" to="/admin">🏠 Dashboard</NuxtLink>
-          <NuxtLink class="flex items-center px-4 py-3 text-sm font-medium rounded-2xl text-slate-500 hover:bg-slate-50 transition-all" to="/admin/structure">✨ Directory</NuxtLink>
-          <NuxtLink class="flex items-center px-4 py-3 text-sm font-bold rounded-2xl bg-violet-50 text-violet-700 transition-all" to="/admin/schedule">📅 Schedule</NuxtLink>
-          <NuxtLink class="flex items-center px-4 py-3 text-sm font-medium rounded-2xl text-slate-500 hover:bg-slate-50 transition-all" to="/admin/menfess">💌 Menfess</NuxtLink>
-          <NuxtLink class="flex items-center px-4 py-3 text-sm font-medium rounded-2xl text-slate-500 hover:bg-slate-50 transition-all" to="/admin/kas">💸 Treasury</NuxtLink>
-        </nav>
-      </div>
-
-      <div class="p-6">
-        <div class="bg-emerald-50 rounded-2xl p-4 flex items-center gap-3 border border-emerald-100">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <div>
-            <p class="text-xs font-bold text-emerald-800">System Online</p>
-            <p class="text-[10px] font-medium text-emerald-600">Database Connected</p>
-          </div>
-        </div>
-      </div>
-    </aside>
+    <AdminSidebar />
 
     <!-- Main -->
     <main class="flex-1 overflow-y-auto relative">

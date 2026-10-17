@@ -10,6 +10,8 @@ const links = [
   { to: '/', label: 'Beranda' },
   { to: '/structure', label: 'Anggota' },
   { to: '/schedule', label: 'Jadwal' },
+  { to: '/uts', label: 'UTS' },
+  { to: '/gallery', label: 'Galeri' },
   { to: '/menfess', label: 'Menfess' },
   { to: '/kas', label: 'Kas' }
 ]
@@ -109,7 +111,8 @@ onBeforeUnmount(() => {
   width: calc(100% - var(--gutter) * 2); max-width: 72rem; height: 48px; margin: 8px auto 0; padding: 0 .5rem 0 1rem;
   border: 1px solid transparent; border-radius: 999px;
   transition: max-width .5s cubic-bezier(.3, .8, .3, 1), background-color .3s, border-color .3s, box-shadow .3s; }
-.is-scrolled .pill, .is-open .pill { max-width: 50rem; background: rgba(10, 13, 22, .62); border-color: rgba(255, 255, 255, .1);
+/* lebar 58rem (dulu 50rem) supaya tujuh tautan + tombol Kirim menfess tetap muat */
+.is-scrolled .pill, .is-open .pill { max-width: 58rem; background: rgba(10, 13, 22, .62); border-color: rgba(255, 255, 255, .1);
   backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4); box-shadow: 0 14px 34px -16px rgba(0, 0, 0, .8); }
 .is-open .pill { background: rgba(10, 13, 22, .96); }
 
@@ -177,6 +180,8 @@ onBeforeUnmount(() => {
   .toggle, .drawer, .scrim { display: none; }
 }
 @media (min-width: 960px) { .pill .cta { display: inline-flex; } }
+/* layar sedang: rapatkan tautan supaya tujuh menu muat */
+@media (min-width: 768px) and (max-width: 1023px) { .link { padding: .5rem .6rem; font-size: .86rem; } }
 @media (prefers-reduced-motion: reduce) {
   .pill, .logo, .ind.anim, .link, .cta, .toggle, .bar, .scrim, .drawer, .drawer-link, .drawer-foot { transition: none; }
   .drawer-link, .drawer-foot { opacity: 1; transform: none; }
